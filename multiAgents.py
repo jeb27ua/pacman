@@ -145,7 +145,29 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
     """
     Your minimax agent with alpha-beta pruning (question 3)
     """
-
+    def alphabeta(node, depth, alpha, beta, is_maximizing_player):
+        if depth == 0 or node.is_terminal():
+            return node.evaluate()
+        
+        if is_maximizing_player:
+            max_eval = float('-inf')
+            for child in node.get_children():
+                eval_score = alphabeta(child, depth-1, alpha, beta, False)
+                max_eval = max(max_eval, eval_score)
+                alpha = max(alpha, eval_score)
+                if beta <= alpha:  # Prune!
+                    break
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for child in node.get_children():
+                eval_score = alphabeta(child, depth-1, alpha, beta, True)
+                min_eval = min(min_eval, eval_score)
+                beta = min(beta, eval_score)
+                if beta <= alpha:  # Prune!
+                    break
+            return min_eval
+    
     def getAction(self, gameState: GameState):
         """
         Returns the minimax action using self.depth and self.evaluationFunction
@@ -329,6 +351,43 @@ class NeuralAgent(Agent):
                 # Si no está asustado, evitarlo
                 if ghost_distance <= 2:
                     score -= 200  # Gran penalización por estar demasiado cerca
+        
+        # Factor 3: Penalización por cantidad de comida restante
+        score -= 4 * len(food)
+
+        # Factor 4: Suma de tiempos de fantasmas asustados
+        scared_ghosts = [g for g in ghost_states if g.scaredTimer > 0]
+        score += sum(g.scaredTimer for g in scared_ghosts)
+
+        # Factor 5: Evitar quedarse quieto
+        if Directions.STOP in legal_actions:
+            score -= 10
+
+        # Factor 6: Evitar retroceder si es posible
+        if hasattr(state, 'getDirection'):
+            current_direction = state.getDirection()
+            reverse = Directions.REVERSE.get(current_direction, None)
+            if reverse in legal_actions:
+                score -= 5
+
+        # Factor 7: Proximidad a múltiples fantasmas no asustados
+        close_ghosts = [g for g in ghost_states if manhattanDistance(pacman_pos, g.getPosition()) <= 3 and g.scaredTimer == 0]
+        score -= 50 * len(close_ghosts)
+
+        # Factor 8: Densidad de comida cercana
+        nearby_food = [f for f in food if manhattanDistance(pacman_pos, f) <= 3]
+        score += 2 * len(nearby_food)
+
+        # Factor 9: Penalizar si nos alejamos de la comida más cercana (solo si no hay fantasmas cerca)
+        if food:
+            current_min_food_distance = min(manhattanDistance(pacman_pos, f) for f in food)
+            if self.prev_food_distance is not None:
+                if current_min_food_distance > self.prev_food_distance:
+                    # Penalización suave si no hay fantasmas amenazantes
+                    if all(manhattanDistance(pacman_pos, g.getPosition()) > 3 or g.scaredTimer > 0 for g in ghost_states):
+                        score -= (current_min_food_distance - self.prev_food_distance) * 3
+            # Actualizamos para el próximo turno
+            self.prev_food_distance = current_min_food_distance
         
         # Combinar la puntuación de la red con la heurística
         neural_score = 0
